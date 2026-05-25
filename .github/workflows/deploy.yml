@@ -1,0 +1,57 @@
+name: Build & Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+          actions-cache-folder: emsdk-cache
+
+      - name: Configure with emcmake
+        run: emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build with emmake
+        run: emmake cmake --build build
+
+      - name: Prepare dist folder
+        run: |
+          mkdir -p dist
+          cp build/apple-catcher.html dist/index.html
+          cp build/apple-catcher.js   dist/apple-catcher.js
+          cp build/apple-catcher.wasm dist/apple-catcher.wasm
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
