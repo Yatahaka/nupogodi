@@ -1,0 +1,61 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Cache SDL3 source
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: sdl3-emscripten-release-3.2.0
+
+      - run: emcmake cmake -S . -B build
+
+      - run: |
+          cd build
+          emmake make -j2
+
+      - name: copy output files
+        run: |
+          mkdir dist
+          cp build/apple_catcher.html dist/index.html
+          cp build/apple_catcher.js   dist/
+          cp build/apple_catcher.wasm dist/
+
+      - uses: actions/configure-pages@v4
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deploy
