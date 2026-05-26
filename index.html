@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Поймай яблоко</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; height: 100vh; }
+  canvas { display: block; image-rendering: pixelated; }
+  p { color: #555; font-family: monospace; font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<p>← → move &nbsp;|&nbsp; R / Enter — restart</p>
+<script>
+// ---- константы (те же что в main.cpp) ----
+const W = 800, H = 600;
+const BKT_W = 100, BKT_H = 22, BKT_Y = H - 55, BKT_SPD = 7;
+const ITEM_SZ = 28, LIVES_MAX = 3;
+const SPAWN_MS = 1289;
+const BASE_SPD = 2.8;
+
+const cv = document.getElementById('c');
+cv.width = W; cv.height = H;
+const cx = cv.getContext('2d');
+
+// ---- пиксельный шрифт 5x7 (те же битмапы) ----
+const FONT5x7 = [
+  [0x0E,0x11,0x13,0x15,0x19,0x11,0x0E],
+  [0x04,0x0C,0x04,0x04,0x04,0x04,0x0E],
+  [0x0E,0x11,0x01,0x02,0x04,0x08,0x1F],
+  [0x1F,0x02,0x04,0x02,0x01,0x11,0x0E],
+  [0x02,0x06,0x0A,0x12,0x1F,0x02,0x02],
+  [0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E],
+  [0x06,0x08,0x10,0x1E,0x11,0x11,0x0E],
+  [0x1F,0x01,0x02,0x04,0x04,0x04,0x04],
+  [0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E],
+  [0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C],
+];
+const HEART = [0x00,0x6C,0xFE,0xFE,0x7C,0x38,0x10,0x00];
+
+function drawDigit(d, x, y, sz, col) {
+  cx.fillStyle = col;
+  for (let r = 0; r < 7; r++)
+    for (let c = 0; c < 5; c++)
+      if (FONT5x7[d][r] & (1 << (4-c)))
+        cx.fillRect(x + c*sz, y + r*sz, sz, sz);
+}
+function drawNum(n, x, y, sz, col) {
+  String(n).split('').forEach(ch => {
+    drawDigit(+ch, x, y, sz, col);
+    x += 6*sz;
+  });
+}
+function numW(n, sz) { return String(n).length * 6 * sz; }
+
+function drawHeart(x, y, sz, lit) {
+  cx.fillStyle = lit ? '#e63737' : '#461919';
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (HEART[r] & (1 << (7-c)))
+        cx.fillRect(x+c*sz, y+r*sz, sz, sz);
+}
+
+function solidCircle(px, py, r, col) {
+  cx.beginPath();
+  cx.arc(px, py, r, 0, Math.PI*2);
+  cx.fillStyle = col;
+  cx.fill();
+}
+
+function drawApple(ax, ay) {
+  const acx = ax + ITEM_SZ/2, acy = ay + ITEM_SZ/2 + 2;
+  solidCircle(acx, acy, ITEM_SZ/2 - 2, '#d22d2d');
+  solidCircle(acx-3, acy-3, 3, '#f06464');
+  cx.fillStyle = '#468c28';
+  cx.fillRect(acx-1, ay+1, 2, 5);
+  cx.strokeStyle = '#468c28'; cx.lineWidth = 1.5;
+  cx.beginPath(); cx.moveTo(acx, ay+4); cx.lineTo(acx+7, ay); cx.stroke();
+  cx.beginPath(); cx.moveTo(acx, ay+4); cx.lineTo(acx+4, ay+7); cx.stroke();
+}
+
+function drawBomb(bx, by) {
+  const bcx = bx + ITEM_SZ/2, bcy = by + ITEM_SZ/2 + 2;
+  solidCircle(bcx, bcy, ITEM_SZ/2 - 2, '#1a1a1a');
+  solidCircle(bcx-3, bcy-4, 3, '#4a4a4a');
+  cx.strokeStyle = '#b48c0a'; cx.lineWidth = 2;
+  cx.beginPath(); cx.moveTo(bcx+5, by+5); cx.lineTo(bcx+9, by-1); cx.stroke();
+  solidCircle(bcx+9, by-2, 3, '#ffd200');
+  solidCircle(bcx+9, by-2, 1, '#ffffb4');
+}
+
+function drawBasket(bx) {
+  cx.fillStyle = '#aa6423';
+  cx.fillRect(bx, BKT_Y, BKT_W, BKT_H);
+  cx.fillStyle = '#d29141';
+  cx.fillRect(bx, BKT_Y, BKT_W, 3);
+  cx.fillStyle = '#783214';
+  cx.fillRect(bx, BKT_Y + BKT_H - 3, BKT_W, 3);
+  cx.strokeStyle = '#824619'; cx.lineWidth = 1;
+  for (let i = 1; i < 10; i++) {
+    cx.beginPath(); cx.moveTo(bx+i*10, BKT_Y); cx.lineTo(bx+i*10, BKT_Y+BKT_H); cx.stroke();
+  }
+}
+
+// ---- состояние игры ----
+let bktX, score, lives, best = 0, over, newBest, fallSpd;
+let items, lastSpawn, flashEnd, blinkVis = true, blinkTick = 0;
+const keys = {};
+
+function startGame() {
+  bktX = W/2 - BKT_W/2;
+  score = 0; lives = LIVES_MAX; over = false; newBest = false;
+  fallSpd = BASE_SPD; items = []; lastSpawn = performance.now(); flashEnd = 0;
+}
+
+// рекорд в localStorage (аналог save.dat)
+function loadBest() { best = parseInt(localStorage.getItem('acBest') || '0') || 0; }
+function saveBest() { localStorage.setItem('acBest', String(best)); }
+
+// ---- главный цикл ----
+function loop(now) {
+  requestAnimationFrame(loop);
+
+  if (now - blinkTick >= 480) { blinkTick = now; blinkVis = !blinkVis; }
+
+  if (!over) {
+    if (keys['ArrowLeft']  && bktX > 0)          bktX -= BKT_SPD;
+    if (keys['ArrowRight'] && bktX < W - BKT_W)  bktX += BKT_SPD;
+
+    // спавн
+    if (now - lastSpawn >= SPAWN_MS) {
+      lastSpawn = now;
+      items.push({
+        x: Math.random() * (W - ITEM_SZ),
+        y: -ITEM_SZ,
+        vy: fallSpd + Math.random() * 1.6,
+        bomb: Math.random() < 0.2,
+        active: true
+      });
+    }
+
+    for (const it of items) {
+      if (!it.active) continue;
+      it.y += it.vy;
+      // коллизия с корзиной
+      if (it.x + ITEM_SZ > bktX && it.x < bktX + BKT_W &&
+          it.y + ITEM_SZ > BKT_Y && it.y < BKT_Y + BKT_H) {
+        it.active = false;
+        if (!it.bomb) {
+          score++;
+          fallSpd = BASE_SPD + Math.floor(score/8) * 0.2;
+        } else {
+          if (score > best) { best = score; newBest = true; saveBest(); }
+          over = true; break;
+        }
+      } else if (it.y > H) {
+        it.active = false;
+        if (!it.bomb) {
+          lives--;
+          flashEnd = now + 250;
+          if (lives <= 0) {
+            if (score > best) { best = score; newBest = true; saveBest(); }
+            over = true; break;
+          }
+        }
+      }
+    }
+    items = items.filter(it => it.active);
+  }
+
+  // ---- рисование ----
+  cx.fillStyle = '#1c1c1c'; cx.fillRect(0, 0, W, H);
+  cx.fillStyle = '#4b321c'; cx.fillRect(0, H-28, W, 28);
+
+  for (const it of items)
+    it.bomb ? drawBomb(it.x|0, it.y|0) : drawApple(it.x|0, it.y|0);
+
+  drawBasket(bktX|0);
+  drawNum(score, 10, 10, 4, '#ffd74b');
+  for (let i = 0; i < LIVES_MAX; i++) drawHeart(10+i*20, 44, 2, i < lives);
+
+  const bw = numW(best, 2);
+  const bc = (score >= best && score > 0) ? '#ffc300' : '#787878';
+  drawNum(best, (W-bw)/2|0, 10, 2, bc);
+
+  if (now < flashEnd) {
+    const t = (flashEnd - now) / 250;
+    cx.globalAlpha = t * 0.43;
+    cx.fillStyle = '#dc2323'; cx.fillRect(0, 0, W, H);
+    cx.globalAlpha = 1;
+  }
+
+  if (over) {
+    cx.globalAlpha = 0.63; cx.fillStyle = '#000'; cx.fillRect(0,0,W,H); cx.globalAlpha=1;
+    const sw = numW(score, 6);
+    drawNum(score, (W-sw)/2|0, H/2-30, 6, '#ffd74b');
+    if (newBest && blinkVis) {
+      const rw = numW(best, 3);
+      drawNum(best, (W-rw)/2|0, H/2+55, 3, '#50e150');
+    } else if (!newBest) {
+      const rw = numW(best, 2);
+      drawNum(best, (W-rw)/2|0, H/2+55, 2, '#787878');
+    }
+  }
+}
+
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (over && (e.key === 'r' || e.key === 'R' || e.key === 'Enter')) {
+    const b = best; startGame(); best = b;
+  }
+  if (['ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+loadBest();
+startGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
