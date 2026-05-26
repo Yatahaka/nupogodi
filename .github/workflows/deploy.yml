@@ -1,0 +1,41 @@
+# Этот workflow нужен если хочешь собирать из C++ исходников через Emscripten.
+# Для быстрого деплоя -- просто включи Pages с ветки main (там уже есть index.html).
+
+name: Build from source (optional)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+
+      - run: emcmake cmake -S . -B build
+      - run: cd build && emmake make -j2
+
+      - name: Replace index.html with compiled version
+        run: |
+          HTML=$(find build -maxdepth 1 -name "*.html" | head -1)
+          BASE="${HTML%.html}"
+          cp "$HTML"        index.html
+          cp "${BASE}.js"   .
+          cp "${BASE}.wasm" .
+
+      - name: Commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html *.js *.wasm
+          git diff --cached --quiet || git commit -m "chore: update compiled wasm [skip ci]"
+          git push
