@@ -1,45 +1,17 @@
-# Apple Catcher
+Apple Catcher
+Аркадная игра на C++ с использованием SDL2. Ловите яблоки корзинкой, избегайте бомб.
 
-Arcade game in C++ using SDL3. Catch apples with the basket, avoid bombs.
+Написана в качестве университетского проекта. Скомпилирована в WebAssembly с помощью Emscripten для развёртывания в браузере.
 
-Written as a university project. Compiled to WebAssembly with Emscripten for browser deployment.
+Управление
+Клавиши со стрелками влево/вправо для движения корзинки.
+Нажмите R для перезапуска после окончания игры.
 
-## Controls
+Правила
+Поимка яблока приносит 1 очко
 
-Arrow keys left/right to move the basket.
-Press R to restart after game over.
+Поимка бомбы немедленно завершает игру
 
-## Rules
+Пропущенное яблоко стоит 1 жизнь (всего 3 жизни)
 
-- Catching an apple gives 1 point
-- Catching a bomb ends the game immediately
-- Missing an apple costs 1 life (3 lives total)
-- Speed increases every 5 points
-
-## Build - native
-
-Requires SDL3 installed on your system.
-
-```
-cmake -S . -B build
-cmake --build build
-./build/apple_catcher
-```
-
-## Build - browser (Emscripten)
-
-Requires emsdk: https://emscripten.org/docs/getting_started/downloads.html
-
-```
-emcmake cmake -S . -B build
-cd build
-emmake make
-```
-
-Open `build/apple_catcher.html` in a browser.
-
-## GitHub Pages deployment
-
-Push the code to a GitHub repository, then go to Settings > Pages and set the source to GitHub Actions. The workflow will build and deploy automatically on each push to main.
-
-Note: high score is not saved between sessions in the browser version.
+Скорость увеличивается каждые 5 очков
