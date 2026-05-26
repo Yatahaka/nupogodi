@@ -1,10 +1,9 @@
-// Игра "Поймай яблоко"  -- курсовой проект, 1 курс
-// компилируется через Emscripten: emcmake cmake + emmake make
+// Игра "Поймай яблоко"
 // для нативной сборки нужен SDL2
 
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
-#  include <emscripten.h>
+#include <emscripten.h>
 #endif
 #include <cstdlib>
 #include <ctime>
@@ -27,9 +26,6 @@
 // ---- падающие предметы ----
 #define ITEM_SZ   28
 #define LIVES_MAX  3
-
-// интервал между появлением предметов в мс
-// я пробовал 1000 -- слишком быстро, 2000 -- скучно
 #define SPAWN_MS 1289
 
 // ---- типы предметов ----
@@ -42,7 +38,6 @@ struct Item {
     bool  active;
 };
 
-// ---- глобальные переменные ----
 // (знаю что глобальные -- плохо, но с main loop иначе не получается)
 static SDL_Window*   gWin  = nullptr;
 static SDL_Renderer* gRen  = nullptr;
