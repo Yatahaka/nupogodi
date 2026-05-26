@@ -1,0 +1,52 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+          actions-cache-folder: emsdk-cache
+
+      - name: Check emcc
+        run: emcc --version
+
+      - name: Configure
+        run: emcmake cmake -S . -B build
+
+      - name: Build
+        run: |
+          cd build
+          emmake make -j2
+
+      - name: List build output
+        run: ls -la build/
+
+      - name: Prepare dist
+        run: |
+          mkdir -p dist
+          HTML=$(find build -maxdepth 1 -name "*.html" | head -1)
+          BASE="${HTML%.html}"
+          echo "Found HTML: $HTML"
+          cp "$HTML"        dist/index.html
+          cp "${BASE}.js"   dist/
+          cp "${BASE}.wasm" dist/
+          ls -la dist/
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
